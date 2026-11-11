@@ -1,12 +1,13 @@
-// The game simulation. Pure logic, no DOM, so the host can run it for everyone later.
+// The game simulation. Pure logic, no DOM, so the host can run it for everyone.
 
 import {
-  BARREL_LENGTH, BULLET_LIFETIME, BULLET_RADIUS, BULLET_SPEED, CELL, DT, FIRE_COOLDOWN,
+  BARREL_LENGTH, BULLET_LIFETIME, BULLET_RADIUS, BULLET_SPEED, CELL, DT, FIRE_COOLDOWN, MATCH_END_DELAY,
   MAX_BULLETS_PER_TANK, ROUND_END_DELAY, TANK_RADIUS, TANK_REVERSE_FACTOR, TANK_SPEED, TANK_TURN_SPEED,
 } from './constants';
 import { generateMaze, mazeSizeFor, type Maze } from './maze';
 import { moveBouncing, resolveWalls } from './physics';
 import { Rng } from './rng';
+import { DEFAULT_SETTINGS, type MatchSettings } from './settings';
 
 export interface TankInput {
   up: boolean;
@@ -18,7 +19,7 @@ export interface TankInput {
 
 export const NO_INPUT: TankInput = { up: false, down: false, left: false, right: false, fire: false };
 
-// Weapon / bullet kinds: only 'basic' for now. Items (Stage 4) will add more kinds here.
+// Weapon / bullet kinds: only 'basic' for now. Items will add more kinds here.
 export type WeaponKind = 'basic';
 
 export interface Player {
@@ -60,35 +61,46 @@ export type GameEvent =
   | { type: 'explode'; x: number; y: number; color: string }
   | { type: 'fire'; x: number; y: number; angle: number }
   | { type: 'roundStart'; round: number }
-  | { type: 'roundEnd'; winner: number | null };
+  | { type: 'roundEnd'; winner: number | null }
+  | { type: 'matchEnd'; winner: number };
+
+export type Phase = 'playing' | 'roundOver' | 'matchOver';
 
 export interface GameState {
   seed: number;
+  settings: MatchSettings;
   round: number;
+  /** Player count the current maze was generated for. */
+  mazePlayers: number;
   tick: number;
   maze: Maze;
   tanks: Tank[];
   bullets: Bullet[];
-  phase: 'playing' | 'roundOver';
+  phase: Phase;
   phaseTimer: number;
+  matchWinner: number | null;
   nextBulletId: number;
   /** Events since the renderer last cleared them (explosions, shots...). */
   events: GameEvent[];
 }
 
-export function createGame(players: Player[], seed: number): GameState {
+export function createGame(players: Player[], seed: number, settings: MatchSettings = DEFAULT_SETTINGS): GameState {
   const state: GameState = {
     seed,
+    settings: { ...settings },
     round: 0,
+    mazePlayers: players.length,
     tick: 0,
     maze: generateMaze(1, 1, new Rng(seed)),
     tanks: players.map((p) => ({
-      ...p, x: 0, y: 0, angle: 0, prevX: 0, prevY: 0, prevAngle: 0,
+      id: p.id, name: p.name, color: p.color,
+      x: 0, y: 0, angle: 0, prevX: 0, prevY: 0, prevAngle: 0,
       alive: true, score: 0, weapon: 'basic', cooldown: 0, fireHeld: false,
     })),
     bullets: [],
     phase: 'playing',
     phaseTimer: 0,
+    matchWinner: null,
     nextBulletId: 1,
     events: [],
   };
@@ -96,16 +108,23 @@ export function createGame(players: Player[], seed: number): GameState {
   return state;
 }
 
+/** Deterministic maze for a round, so peers can rebuild it from (seed, round, players). */
+export function mazeForRound(seed: number, round: number, players: number): { maze: Maze; rng: Rng } {
+  const rng = new Rng((seed ^ Math.imul(round, 0x9e3779b1)) >>> 0);
+  const { cols, rows } = mazeSizeFor(players, rng);
+  return { maze: generateMaze(cols, rows, rng), rng };
+}
+
 export function startRound(state: GameState): void {
   state.round++;
-  const rng = new Rng((state.seed ^ Math.imul(state.round, 0x9e3779b1)) >>> 0);
-  const { cols, rows } = mazeSizeFor(state.tanks.length, rng);
-  state.maze = generateMaze(cols, rows, rng);
+  state.mazePlayers = state.tanks.length;
+  const { maze, rng } = mazeForRound(state.seed, state.round, state.mazePlayers);
+  state.maze = maze;
   state.bullets = [];
   state.phase = 'playing';
   state.phaseTimer = 0;
 
-  const cells = spawnCells(cols, rows, state.tanks.length, rng);
+  const cells = spawnCells(maze.cols, maze.rows, state.tanks.length, rng);
   state.tanks.forEach((t, i) => {
     const [c, r] = cells[i];
     t.x = t.prevX = (c + 0.5) * CELL;
@@ -117,6 +136,15 @@ export function startRound(state: GameState): void {
     t.fireHeld = true; // ignore a fire key still held from last round
   });
   state.events.push({ type: 'roundStart', round: state.round });
+}
+
+/** Remove a player who left mid-game. */
+export function removeTank(state: GameState, id: number): void {
+  const t = state.tanks.find((t) => t.id === id);
+  if (!t) return;
+  if (t.alive) state.events.push({ type: 'explode', x: t.x, y: t.y, color: t.color });
+  state.tanks = state.tanks.filter((t) => t.id !== id);
+  state.bullets = state.bullets.filter((b) => b.owner !== id);
 }
 
 /** Pick spawn cells that are spread out across the maze. */
@@ -140,6 +168,16 @@ function spawnCells(cols: number, rows: number, count: number, rng: Rng): [numbe
 export function step(state: GameState, inputs: Map<number, TankInput>): void {
   state.tick++;
   const walls = state.maze.walls;
+
+  if (state.phase === 'matchOver') {
+    for (const t of state.tanks) {
+      t.prevX = t.x;
+      t.prevY = t.y;
+      t.prevAngle = t.angle;
+    }
+    state.phaseTimer = Math.max(0, state.phaseTimer - DT);
+    return;
+  }
 
   // Tanks
   for (const t of state.tanks) {
@@ -188,7 +226,15 @@ export function step(state: GameState, inputs: Map<number, TankInput>): void {
       const winner = alive.length === 1 && state.tanks.length > 1 ? alive[0] : null;
       if (winner) winner.score++;
       state.events.push({ type: 'roundEnd', winner: winner?.id ?? null });
-      startRound(state);
+      const target = state.settings.pointsToWin;
+      if (winner && target > 0 && winner.score >= target) {
+        state.phase = 'matchOver';
+        state.phaseTimer = MATCH_END_DELAY;
+        state.matchWinner = winner.id;
+        state.events.push({ type: 'matchEnd', winner: winner.id });
+      } else {
+        startRound(state);
+      }
     }
   }
 }
@@ -217,9 +263,12 @@ function hitTank(state: GameState, b: Bullet): boolean {
   for (const t of state.tanks) {
     if (!t.alive) continue;
     const d = Math.hypot(t.x - b.x, t.y - b.y);
-    if (t.id === b.owner && !b.armed) {
-      if (d > reach) b.armed = true;
-      continue;
+    if (t.id === b.owner) {
+      if (!state.settings.selfDamage) continue;
+      if (!b.armed) {
+        if (d > reach) b.armed = true;
+        continue;
+      }
     }
     if (d < reach - 2) {
       t.alive = false;

@@ -6,17 +6,97 @@
     <title>Tank Game</title>
   </head>
   <body>
-    <div id="arena">
-      <canvas id="game"></canvas>
-      <div id="banner" hidden></div>
-    </div>
-    <footer id="hud">
-      <div id="scores"></div>
-      <div class="help">
-        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> fire
-        <span class="local">· local test P2: arrows + <kbd>Enter</kbd></span>
+    <!-- Main menu -->
+    <section id="menu" class="screen">
+      <div class="card">
+        <h1>Tank Game</h1>
+        <p class="tagline">Bouncing bullets. Tight mazes. Last tank standing.</p>
+
+        <label class="field">
+          <span>Your name</span>
+          <input id="name" maxlength="16" autocomplete="nickname" placeholder="Player" />
+        </label>
+
+        <button id="host-btn" class="btn primary big">Host a game</button>
+
+        <div class="divider"><span>or join one</span></div>
+
+        <form id="join-form" class="join-row">
+          <input id="code-input" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false" aria-label="Game code" />
+          <button id="join-btn" class="btn" type="submit">Join</button>
+        </form>
+
+        <p id="menu-status" class="status" role="status"></p>
+
+        <button id="practice-btn" class="link">Local practice: 2 players on one keyboard</button>
       </div>
-    </footer>
+    </section>
+
+    <!-- Lobby -->
+    <section id="lobby" class="screen" hidden>
+      <div class="card wide">
+        <header class="lobby-head">
+          <h2>Lobby</h2>
+          <div class="invite-wrap">
+            <button id="invite-toggle" class="btn" aria-expanded="false" aria-controls="invite">Invite friends ▾</button>
+            <div id="invite" class="invite" hidden>
+              <div class="invite-row">
+                <span class="label">Code</span>
+                <span id="invite-code" class="code"></span>
+                <button class="btn small" data-copy="code">Copy</button>
+              </div>
+              <div class="invite-row">
+                <span class="label">Link</span>
+                <input id="invite-link" readonly />
+                <button class="btn small" data-copy="link">Copy</button>
+              </div>
+              <p class="hint">Friends open the link, or choose “Join” and type the code.</p>
+            </div>
+          </div>
+        </header>
+
+        <div id="slots" class="slots"></div>
+
+        <div class="settings">
+          <h3>Settings <span id="settings-note" class="muted"></span></h3>
+          <label class="toggle">
+            <input type="checkbox" id="set-selfdamage" />
+            <span>Self-damage <small>your own bullets can hit you</small></span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="set-items" />
+            <span>Items <small>power-up pickups (coming soon)</small></span>
+          </label>
+          <label class="select">
+            <span>Points to win</span>
+            <select id="set-points"></select>
+          </label>
+        </div>
+
+        <footer class="lobby-foot">
+          <button id="leave-lobby" class="btn">Leave</button>
+          <span id="lobby-status" class="status"></span>
+          <button id="start-btn" class="btn primary">Start game</button>
+        </footer>
+      </div>
+    </section>
+
+    <!-- Game -->
+    <section id="game-screen" class="screen game" hidden>
+      <div id="arena">
+        <canvas id="game"></canvas>
+        <div id="banner" hidden></div>
+      </div>
+      <footer id="hud">
+        <div id="scores"></div>
+        <div class="help">
+          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> fire
+          <span id="local-help" hidden>· player 2: arrows + <kbd>Enter</kbd></span>
+        </div>
+        <button id="leave-game" class="btn small">Leave</button>
+      </footer>
+    </section>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -24,3 +24,4 @@ export const BARREL_LENGTH = 18;
 
 // Rounds
 export const ROUND_END_DELAY = 3;
+export const MATCH_END_DELAY = 5;

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { CELL, TICK_RATE } from '../src/game/constants';
 import { POWER_KINDS, POWERS, rollPower, SHARD_COUNT, type PowerKind } from '../src/game/items';
 import { DEFAULT_SETTINGS } from '../src/game/settings';
-import { createGame, NO_INPUT, step, type GameState, type TankInput } from '../src/game/sim';
+import { MAZE_STYLES, mazeSizeFor, type MazeStyle } from '../src/game/maze';
+import { Rng } from '../src/game/rng';
+import { createGame, mazeForRound, NO_INPUT, step, type GameState, type TankInput } from '../src/game/sim';
 
 const players = [
   { id: 1, name: 'A', color: '#0a0' },
@@ -29,6 +31,7 @@ function give(s: GameState, id: number, power: PowerKind) {
   const t = s.tanks.find((t) => t.id === id)!;
   t.power = power;
   t.powerTime = POWERS[power].duration;
+  t.charges = POWERS[power].charges ?? 0;
 }
 
 function run(s: GameState, ticks: number, p1: Partial<TankInput> = {}) {
@@ -47,7 +50,7 @@ describe('spawn weights', () => {
     for (let i = 0; i < 10000; i++) counts[rollPower(i / 10000)]++;
     expect(Math.min(...Object.values(counts))).toBe(counts.ray);
     expect(Math.max(...Object.values(counts))).toBe(counts.speed);
-    expect(counts.ray / 10000).toBeCloseTo(0.05, 2);
+    expect(counts.ray / 10000).toBeLessThan(0.05);
   });
 
   it('every power lasts 5 seconds or less', () => {
@@ -156,5 +159,67 @@ describe('powers', () => {
     run(s, TICK_RATE);
     const m = s.bullets.find((b) => b.kind === 'homing');
     expect(!m || m.vy > 0 || !target.alive).toBe(true);
+  });
+
+  it('shotgun fires a spread of pellets, three times', () => {
+    const s = game({ selfDamage: false });
+    place(s, 1, 2, 2, 0);
+    give(s, 1, 'shotgun');
+    tap(s);
+    expect(s.bullets.filter((b) => b.kind === 'pellet').length).toBe(9);
+    run(s, 30);
+    tap(s);
+    run(s, 30);
+    tap(s);
+    expect(s.tanks[0].power).toBeNull();
+  });
+
+  it('mines sit still and destroy a tank that drives over them', () => {
+    const s = game();
+    place(s, 1, 0, 0, 0);
+    const victim = place(s, 2, 4, 4, 0);
+    give(s, 1, 'mines');
+    tap(s);
+    const mine = s.bullets.find((b) => b.kind === 'mine')!;
+    expect(mine).toBeDefined();
+    const [mx, my] = [mine.x, mine.y];
+    run(s, TICK_RATE);
+    expect([mine.x, mine.y]).toEqual([mx, my]);
+    victim.x = mx;
+    victim.y = my;
+    run(s, 1);
+    expect(victim.alive).toBe(false);
+  });
+
+  it('ghost drives through walls', () => {
+    const s = createGame(players, 11, { ...DEFAULT_SETTINGS, items: false });
+    const t = s.tanks[0];
+    give(s, 1, 'ghost');
+    run(s, TICK_RATE * 3, { up: true });
+    const m = 16;
+    const atEdge = t.x <= m || t.y <= m || t.x >= s.maze.width - m || t.y >= s.maze.height - m;
+    expect(atEdge).toBe(true);
+  });
+});
+
+describe('map styles', () => {
+  it('tight maps are smaller and open maps bigger than classic', () => {
+    const area = (st: MazeStyle) => {
+      const z = mazeSizeFor(4, new Rng(3), st);
+      return z.cols * z.rows;
+    };
+    expect(area('tight')).toBeLessThan(area('classic'));
+    expect(area('open')).toBeGreaterThan(area('classic'));
+    expect(MAZE_STYLES.open.openings).toBeGreaterThan(MAZE_STYLES.classic.openings);
+  });
+
+  it('rounds mix all styles and every peer builds the same maze', () => {
+    const seen = new Set<string>();
+    for (let r = 1; r <= 40; r++) {
+      const a = mazeForRound(99, r, 4).maze;
+      expect(mazeForRound(99, r, 4).maze.walls).toEqual(a.walls);
+      seen.add(a.style);
+    }
+    expect(seen.size).toBe(3);
   });
 });

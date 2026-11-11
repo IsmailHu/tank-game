@@ -6,10 +6,11 @@ import {
 } from './constants';
 import {
   BULLETS, HOMING_DELAY, HOMING_TURN, ITEM_FIRST_DELAY, ITEM_INTERVAL_MAX, ITEM_INTERVAL_MIN, maxPickups,
-  MINIGUN_INTERVAL, MINIGUN_SPREAD, PICKUP_RADIUS, POWERS, RAPID_COOLDOWN, RAY_LENGTH, RAY_SAFE_DISTANCE,
-  rollPower, SHARD_COUNT, SPEED_BOOST, SPEED_TURN_BOOST, type BulletKind, type PowerKind,
+  MINE_ARM_TIME, MINE_COOLDOWN, MINIGUN_INTERVAL, MINIGUN_SPREAD, PICKUP_RADIUS, POWERS, RAPID_COOLDOWN,
+  RAY_LENGTH, RAY_SAFE_DISTANCE, rollPower, SHARD_COUNT, SHOTGUN_COOLDOWN, SHOTGUN_PELLETS, SHOTGUN_SPREAD,
+  SPEED_BOOST, SPEED_TURN_BOOST, type BulletKind, type PowerKind,
 } from './items';
-import { generateMaze, mazeSizeFor, type Maze } from './maze';
+import { generateMaze, MAZE_STYLES, mazeSizeFor, mazeStyleFor, type Maze } from './maze';
 import { moveBouncing, resolveWalls } from './physics';
 import { Rng } from './rng';
 import { DEFAULT_SETTINGS, type MatchSettings } from './settings';
@@ -42,6 +43,8 @@ export interface Tank extends Player {
   /** Active power-up (one at a time; picking up another replaces it). */
   power: PowerKind | null;
   powerTime: number;
+  /** Shots/drops left for limited weapons (shotgun, mines). */
+  charges: number;
   /** A frag bomb this tank fired that hasn't gone off yet (fire again to detonate). */
   fragId: number | null;
   cooldown: number;
@@ -116,7 +119,7 @@ export function createGame(players: Player[], seed: number, settings: MatchSetti
     tanks: players.map((p) => ({
       id: p.id, name: p.name, color: p.color,
       x: 0, y: 0, angle: 0, prevX: 0, prevY: 0, prevAngle: 0,
-      alive: true, score: 0, power: null, powerTime: 0, fragId: null, cooldown: 0, fireHeld: false,
+      alive: true, score: 0, power: null, powerTime: 0, charges: 0, fragId: null, cooldown: 0, fireHeld: false,
     })),
     bullets: [],
     pickups: [],
@@ -135,8 +138,9 @@ export function createGame(players: Player[], seed: number, settings: MatchSetti
 /** Deterministic maze for a round, so peers can rebuild it from (seed, round, players). */
 export function mazeForRound(seed: number, round: number, players: number): { maze: Maze; rng: Rng } {
   const rng = new Rng((seed ^ Math.imul(round, 0x9e3779b1)) >>> 0);
-  const { cols, rows } = mazeSizeFor(players, rng);
-  return { maze: generateMaze(cols, rows, rng), rng };
+  const style = mazeStyleFor(rng);
+  const { cols, rows } = mazeSizeFor(players, rng, style);
+  return { maze: generateMaze(cols, rows, rng, MAZE_STYLES[style].openings, style), rng };
 }
 
 export function startRound(state: GameState): void {
@@ -159,6 +163,7 @@ export function startRound(state: GameState): void {
     t.alive = true;
     t.power = null;
     t.powerTime = 0;
+    t.charges = 0;
     t.fragId = null;
     t.cooldown = 0;
     t.fireHeld = true; // ignore a fire key still held from last round
@@ -217,10 +222,7 @@ export function step(state: GameState, inputs: Map<number, TankInput>): void {
 
     if (t.power) {
       t.powerTime -= DT;
-      if (t.powerTime <= 0) {
-        t.power = null;
-        t.powerTime = 0;
-      }
+      if (t.powerTime <= 0) clearPower(t);
     }
 
     const fast = t.power === 'speed';
@@ -230,14 +232,14 @@ export function step(state: GameState, inputs: Map<number, TankInput>): void {
     const speed = TANK_SPEED * (fast ? SPEED_BOOST : 1);
     t.x += Math.cos(t.angle) * move * speed * DT;
     t.y += Math.sin(t.angle) * move * speed * DT;
-    resolveWalls(t, TANK_RADIUS, walls);
+    collideWalls(state, t);
 
     t.cooldown = Math.max(0, t.cooldown - DT);
     handleFire(state, t, input);
     t.fireHeld = input.fire;
   }
   separateTanks(state.tanks);
-  for (const t of state.tanks) if (t.alive) resolveWalls(t, TANK_RADIUS, walls);
+  for (const t of state.tanks) if (t.alive) collideWalls(state, t);
 
   // Pickups
   collectPickups(state);
@@ -262,7 +264,7 @@ export function step(state: GameState, inputs: Map<number, TankInput>): void {
       continue;
     }
     if (b.kind === 'homing' && b.age > HOMING_DELAY) steerHoming(state, b);
-    moveBouncing(b, def.radius, DT, walls);
+    if (b.kind !== 'mine') moveBouncing(b, def.radius, DT, walls);
     if (hitTank(state, b, spawned)) continue;
     survivors.push(b);
   }
@@ -324,6 +326,23 @@ function handleFire(state: GameState, t: Tank, input: TankInput): void {
         t.cooldown = RAPID_COOLDOWN;
       }
       return;
+    case 'shotgun':
+      if (pressed && t.cooldown === 0) {
+        for (let i = 0; i < SHOTGUN_PELLETS; i++) {
+          const a = t.angle + ((i / (SHOTGUN_PELLETS - 1)) * 2 - 1) * SHOTGUN_SPREAD + (state.rng.next() - 0.5) * 0.08;
+          fireBullet(state, t, 'pellet', a, i === 0);
+        }
+        t.cooldown = SHOTGUN_COOLDOWN;
+        if (--t.charges <= 0) clearPower(t);
+      }
+      return;
+    case 'mines':
+      if (pressed && t.cooldown === 0) {
+        dropMine(state, t);
+        t.cooldown = MINE_COOLDOWN;
+        if (--t.charges <= 0) clearPower(t);
+      }
+      return;
     case 'homing':
       if (pressed) {
         fireBullet(state, t, 'homing', t.angle);
@@ -356,9 +375,35 @@ function handleFire(state: GameState, t: Tank, input: TankInput): void {
 function clearPower(t: Tank): void {
   t.power = null;
   t.powerTime = 0;
+  t.charges = 0;
 }
 
-function fireBullet(state: GameState, t: Tank, kind: BulletKind, angle: number): Bullet {
+/** Walls block tanks, except ghosts, which only stay inside the arena. */
+function collideWalls(state: GameState, t: Tank): void {
+  if (t.power === 'ghost') {
+    const m = TANK_RADIUS + 2;
+    t.x = Math.max(m, Math.min(state.maze.width - m, t.x));
+    t.y = Math.max(m, Math.min(state.maze.height - m, t.y));
+  } else {
+    resolveWalls(t, TANK_RADIUS, state.maze.walls);
+  }
+}
+
+/** Leave a mine behind the tank. It sits still and destroys the first tank to touch it. */
+function dropMine(state: GameState, t: Tank): void {
+  const p = {
+    x: t.x - Math.cos(t.angle) * (TANK_RADIUS + 4),
+    y: t.y - Math.sin(t.angle) * (TANK_RADIUS + 4),
+  };
+  resolveWalls(p, BULLETS.mine.radius, state.maze.walls);
+  state.bullets.push({
+    id: state.nextId++, owner: t.id, kind: 'mine',
+    x: p.x, y: p.y, vx: 0, vy: 0, prevX: p.x, prevY: p.y, age: 0, armed: false,
+  });
+  state.events.push({ type: 'fire', x: p.x, y: p.y, angle: t.angle, kind: 'mine' });
+}
+
+function fireBullet(state: GameState, t: Tank, kind: BulletKind, angle: number, announce = true): Bullet {
   const def = BULLETS[kind];
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
@@ -373,7 +418,7 @@ function fireBullet(state: GameState, t: Tank, kind: BulletKind, angle: number):
   b.prevX = b.x;
   b.prevY = b.y;
   state.bullets.push(b);
-  state.events.push({ type: 'fire', x: b.x, y: b.y, angle, kind });
+  if (announce) state.events.push({ type: 'fire', x: b.x, y: b.y, angle, kind });
   return b;
 }
 
@@ -452,6 +497,7 @@ function damageTank(state: GameState, t: Tank): boolean {
 
 function hitTank(state: GameState, b: Bullet, spawned: Bullet[]): boolean {
   const reach = TANK_RADIUS + BULLETS[b.kind].radius;
+  if (b.kind === 'mine' && b.age < MINE_ARM_TIME) return false;
   for (const t of state.tanks) {
     if (!t.alive) continue;
     const d = Math.hypot(t.x - b.x, t.y - b.y);
@@ -465,6 +511,7 @@ function hitTank(state: GameState, b: Bullet, spawned: Bullet[]): boolean {
     if (d < reach - 2) {
       // A frag bomb that hits a tank bursts on impact.
       if (b.kind === 'frag') detonate(state, b, spawned);
+      if (b.kind === 'mine') state.events.push({ type: 'frag', x: b.x, y: b.y });
       damageTank(state, t);
       return true;
     }
@@ -494,6 +541,7 @@ function collectPickups(state: GameState): void {
       if (!t.alive || Math.hypot(t.x - p.x, t.y - p.y) > TANK_RADIUS + PICKUP_RADIUS) continue;
       t.power = p.kind;
       t.powerTime = POWERS[p.kind].duration;
+      t.charges = POWERS[p.kind].charges ?? 0;
       t.cooldown = 0;
       state.events.push({ type: 'pickup', x: p.x, y: p.y, kind: p.kind });
       return false;

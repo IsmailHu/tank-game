@@ -17,7 +17,7 @@ export const TANK_TURN_SPEED = 3.6; // radians per second
 // Bullets
 export const BULLET_RADIUS = 3;
 export const BULLET_SPEED = 175;
-export const BULLET_LIFETIME = 10;
+export const BULLET_LIFETIME = 5;
 export const MAX_BULLETS_PER_TANK = 5;
 export const FIRE_COOLDOWN = 0.12;
 export const BARREL_LENGTH = 18;

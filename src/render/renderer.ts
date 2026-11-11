@@ -62,7 +62,7 @@ export class Renderer {
   }
 
   /** alpha: 0..1 progress between the last two simulation steps. realDt: seconds since last frame. */
-  draw(state: GameState, alpha: number, realDt: number): void {
+  draw(state: GameState, alpha: number, realDt: number, myId = -1): void {
     const dpr = this.fit();
     const { ctx, skin, canvas } = this;
     this.time += realDt;
@@ -110,8 +110,14 @@ export class Renderer {
           life: 0.3, maxLife: 0.3, size: 2.5, color: POWERS.speed.color,
         });
       }
+      // Cloaked tanks are almost invisible to everyone else; ghosts are see-through.
+      const cloaked = t.power === 'cloak';
+      const hidden = cloaked && t.id !== myId;
+      if (cloaked) ctx.globalAlpha = hidden ? 0.05 + Math.max(0, Math.sin(this.time * 3 + t.id)) * 0.05 : 0.35;
+      else if (t.power === 'ghost') ctx.globalAlpha = 0.5 + Math.sin(this.time * 6) * 0.1;
       skin.drawTank(ctx, { x, y, angle: lerp(t.prevAngle, t.angle, alpha), color: t.color });
-      if (t.power) this.drawPowerRing(x, y, t.power === 'shield', POWERS[t.power].color, t.powerTime / POWERS[t.power].duration);
+      ctx.globalAlpha = 1;
+      if (t.power && !hidden) this.drawPowerRing(x, y, t.power === 'shield', POWERS[t.power].color, t.powerTime / POWERS[t.power].duration);
     }
 
     skin.drawWalls(ctx, state.maze.walls);
@@ -159,7 +165,9 @@ export class Renderer {
           this.rings.push({ x: e.x, y: e.y, radius: 40, life: 0.35, maxLife: 0.35, color: POWERS.frag.color });
           break;
         case 'fire':
-          if (e.kind === 'mini' || e.kind === 'rapid') this.burst(e.x, e.y, 2, ['#f2a03d'], 30, 60, 0.08, 0.1, 1, 2, e.angle);
+          if (e.kind === 'mine') this.rings.push({ x: e.x, y: e.y, radius: 14, life: 0.25, maxLife: 0.25, color: POWERS.mines.color });
+          else if (e.kind === 'pellet') this.burst(e.x, e.y, 10, ['#f2a03d', '#35353b'], 60, 160, 0.12, 0.2, 1.5, 3, e.angle);
+          else if (e.kind === 'mini' || e.kind === 'rapid') this.burst(e.x, e.y, 2, ['#f2a03d'], 30, 60, 0.08, 0.1, 1, 2, e.angle);
           else this.burst(e.x, e.y, 5, ['#f2a03d'], 40, 100, 0.15, 0.15, 1.5, 3, e.angle);
           break;
         case 'ray':

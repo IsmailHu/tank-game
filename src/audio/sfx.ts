@@ -47,6 +47,12 @@ export class Sfx {
         if (e.kind === 'mini' || e.kind === 'rapid') {
           if (!this.throttle('rapidfire', 0.045)) return;
           this.tone('square', 900, 300, 0.05, 0.06);
+        } else if (e.kind === 'pellet') {
+          this.boom(0.18, 0.35);
+          this.hiss(0.12, 0.15, 2500);
+        } else if (e.kind === 'mine') {
+          this.tone('square', 300, 300, 0.05, 0.08);
+          this.tone('square', 450, 450, 0.05, 0.08, 0.07);
         } else if (e.kind === 'homing') {
           this.tone('sawtooth', 180, 520, 0.3, 0.1);
           this.hiss(0.3, 0.08, 3000);

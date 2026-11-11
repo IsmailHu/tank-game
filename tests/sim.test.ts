@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CELL, ROUND_END_DELAY, TICK_RATE } from '../src/game/constants';
+import { DEFAULT_SETTINGS } from '../src/game/settings';
 import { createGame, NO_INPUT, step, type TankInput } from '../src/game/sim';
 
 const players = [
@@ -24,7 +25,8 @@ describe('simulation', () => {
   });
 
   it('space fires one bullet per press', () => {
-    const s = createGame(players, 7);
+    // Self-damage off so a shot bouncing straight back can't end the round mid-test.
+    const s = createGame(players, 7, { ...DEFAULT_SETTINGS, selfDamage: false });
     run(s, 1);
     run(s, 10, { fire: true }); // held: still only one shot
     expect(s.bullets.length).toBe(1);

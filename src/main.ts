@@ -153,7 +153,7 @@ function frame(now: number) {
     const alpha = session.frame(realDt, keyboard);
     const game = session.game; // may have ended during frame()
     if (game) {
-      renderer.draw(game, alpha, realDt);
+      renderer.draw(game, alpha, realDt, session.myId);
       hud.update(game, session.myId);
     }
   }

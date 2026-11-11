@@ -1,4 +1,5 @@
 import { POWERS } from '../game/items';
+import { MAZE_STYLES } from '../game/maze';
 import type { GameState } from '../game/sim';
 
 /** Scoreboard + round banner. Only touches the DOM when something changed. */
@@ -18,9 +19,9 @@ export class Hud {
     }
     const target = state.settings.pointsToWin;
     const powerLabel = (t: (typeof state.tanks)[number]) =>
-      t.alive && t.power ? `${POWERS[t.power].name} ${Math.ceil(t.powerTime)}s` : '';
+      t.alive && t.power ? `${POWERS[t.power].name}${t.charges > 0 ? ` ×${t.charges}` : ''} ${Math.ceil(t.powerTime)}s` : '';
     const key =
-      state.tanks.map((t) => `${t.id}:${t.name}:${t.score}:${t.alive ? 1 : 0}:${powerLabel(t)}`).join() + bannerText + myId;
+      state.tanks.map((t) => `${t.id}:${t.name}:${t.score}:${t.alive ? 1 : 0}:${powerLabel(t)}`).join() + bannerText + myId + state.maze.style;
     if (key === this.lastKey) return;
     this.lastKey = key;
 
@@ -39,6 +40,7 @@ export class Hud {
         el.title = target > 0 ? `First to ${target}` : '';
         return el;
       }),
+      Object.assign(document.createElement('div'), { className: 'map-name', textContent: `${MAZE_STYLES[state.maze.style].name} map` }),
     );
     this.banner.textContent = bannerText;
     this.banner.hidden = !bannerText;

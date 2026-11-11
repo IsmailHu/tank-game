@@ -102,6 +102,23 @@ export const placeholderSkin: Skin = {
         ctx.stroke();
         return;
       }
+      case 'mine': {
+        ctx.fillStyle = '#4a4a50';
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = Math.sin(time * 6) > 0 ? '#e23b55' : '#7a2030';
+        ctx.beginPath();
+        ctx.arc(x, y, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      }
+      case 'pellet':
+        ctx.fillStyle = '#7a4a22';
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+        return;
       case 'shard':
         ctx.fillStyle = '#c47a2c';
         ctx.beginPath();
@@ -173,6 +190,27 @@ export const placeholderSkin: Skin = {
           ctx.moveTo(Math.cos(a) * 2.5, Math.sin(a) * 2.5);
           ctx.lineTo(Math.cos(a) * 6.5, Math.sin(a) * 6.5);
         }
+        ctx.stroke();
+        break;
+      case 'shotgun': // fan of three lines
+        for (const a of [-0.5, 0, 0.5]) { ctx.moveTo(-5, 0); ctx.lineTo(-5 + Math.cos(a) * 11, Math.sin(a) * 11); }
+        ctx.stroke();
+        break;
+      case 'ghost': // little ghost outline
+        ctx.moveTo(-5, 6); ctx.lineTo(-5, -1); ctx.arc(0, -1, 5, Math.PI, 0); ctx.lineTo(5, 6);
+        ctx.lineTo(2.5, 4); ctx.lineTo(0, 6); ctx.lineTo(-2.5, 4); ctx.closePath();
+        ctx.stroke();
+        break;
+      case 'mines': // mine with spikes
+        ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + Math.PI / 4; ctx.moveTo(Math.cos(a) * 4, Math.sin(a) * 4); ctx.lineTo(Math.cos(a) * 7, Math.sin(a) * 7); }
+        ctx.stroke();
+        break;
+      case 'cloak': // eye with a slash
+        ctx.ellipse(0, 0, 6.5, 4, 0, 0, Math.PI * 2);
+        ctx.moveTo(-6, 6); ctx.lineTo(6, -6);
         ctx.stroke();
         break;
       case 'ray': // lightning bolt

@@ -47,8 +47,11 @@ tests/
 ```
 
 ## Netcode (kept simple)
-- Host simulates at 60 Hz, sends snapshots ~30 Hz.
-- Guests predict their own tank locally, interpolate other tanks (~100 ms behind).
+- **Rendering is uncapped**: each client draws at its own display's max refresh rate
+  (`requestAnimationFrame`: 60/144/240 Hz…), interpolating between simulation steps.
+- **Simulation** runs on a fixed 60 Hz timestep (deterministic bounces, same result on every machine).
+- **Network**: host sends snapshots at 60 Hz (tunable; drop to 30 Hz if host upload struggles).
+- Guests predict their own tank locally, interpolate other tanks (~50–100 ms behind).
 - Bullets: spawn events sent once; guests simulate bounces with the same code.
 
 ## Stages

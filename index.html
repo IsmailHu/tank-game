@@ -6,11 +6,17 @@
     <title>Tank Game</title>
   </head>
   <body>
-    <main>
-      <h1>Tank Game</h1>
+    <div id="arena">
       <canvas id="game"></canvas>
-      <p class="note">Placeholder build: gameplay arrives in Stage 1.</p>
-    </main>
+      <div id="banner" hidden></div>
+    </div>
+    <footer id="hud">
+      <div id="scores"></div>
+      <div class="help">
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> fire
+        <span class="local">· local test P2: arrows + <kbd>Enter</kbd></span>
+      </div>
+    </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

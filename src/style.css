@@ -1,38 +1,77 @@
 :root {
-  --bg: #e9e6df;
+  --bg: #e4e1da;
   --ink: #2b2b2e;
   --muted: #6b6a66;
+  --panel: #f4f2ed;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 * { box-sizing: border-box; }
 
+html, body { height: 100%; }
+
 body {
   margin: 0;
-  min-height: 100vh;
+  overflow: hidden;
   background: var(--bg);
   color: var(--ink);
-  display: grid;
-  place-items: center;
-}
-
-main {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  width: 100%;
 }
 
-h1 { margin: 0; font-size: 28px; letter-spacing: 0.02em; }
+/* The arena takes all space above the HUD; the renderer letterboxes the maze inside it. */
+#arena {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
 
 canvas {
-  width: min(720px, 100%);
-  aspect-ratio: 3 / 2;
-  background: #fbfaf7;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgb(0 0 0 / 0.12);
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.note { margin: 0; color: var(--muted); font-size: 14px; }
+#banner {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgb(43 43 46 / 0.88);
+  color: #fff;
+  font-weight: 600;
+  font-size: 18px;
+  pointer-events: none;
+}
+
+#hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-top: 1px solid rgb(0 0 0 / 0.08);
+}
+
+#scores { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+
+.score { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.score.dead { opacity: 0.4; }
+.chip { width: 14px; height: 14px; border-radius: 4px; }
+.pts { font-variant-numeric: tabular-nums; min-width: 1.5ch; font-size: 20px; }
+
+.help { color: var(--muted); font-size: 13px; }
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid rgb(0 0 0 / 0.15);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #fff;
+  font: 600 12px system-ui, sans-serif;
+  color: var(--ink);
+}

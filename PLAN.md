@@ -54,6 +54,13 @@ tests/
 - Guests predict their own tank locally, interpolate other tanks (~50–100 ms behind).
 - Bullets: spawn events sent once; guests simulate bounces with the same code.
 
+## Controls
+WASD to drive, Space to fire, for every player. (Arrows + Enter exist only for offline 2-player testing.)
+
+## Items (later)
+Not built yet, but planned for: `Tank.weapon` / `Bullet.kind` (`WeaponKind` in `src/game/sim.ts`)
+are where new weapons plug in; pickups will be a new list on `GameState`.
+
 ## Stages
 0. **Setup** – install Node + gh, scaffold Vite/TS project, git repo, GitHub repo, Pages deploy of a "hello" page.
 1. **Offline prototype** – maze gen (scales with player count), tank movement, bouncing bullets, hits; local play.

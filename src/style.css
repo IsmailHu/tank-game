@@ -1,0 +1,38 @@
+:root {
+  --bg: #e9e6df;
+  --ink: #2b2b2e;
+  --muted: #6b6a66;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  width: 100%;
+}
+
+h1 { margin: 0; font-size: 28px; letter-spacing: 0.02em; }
+
+canvas {
+  width: min(720px, 100%);
+  aspect-ratio: 3 / 2;
+  background: #fbfaf7;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.12);
+}
+
+.note { margin: 0; color: var(--muted); font-size: 14px; }

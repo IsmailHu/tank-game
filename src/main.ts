@@ -1,4 +1,5 @@
 import './style.css';
+import { Sfx } from './audio/sfx';
 import { GuestSession } from './net/guest';
 import { HostSession } from './net/host';
 import { LocalSession } from './net/local';
@@ -20,7 +21,8 @@ const hostBtn = $<HTMLButtonElement>('#host-btn');
 const joinBtn = $<HTMLButtonElement>('#join-btn');
 
 const keyboard = new Keyboard([WASD, LOCAL_P2]);
-const renderer = new Renderer($<HTMLCanvasElement>('#game'), placeholderSkin);
+const sfx = new Sfx();
+const renderer = new Renderer($<HTMLCanvasElement>('#game'), placeholderSkin, sfx);
 const hud = new Hud($('#scores'), $('#banner'));
 const lobbyView = new LobbyView(() => leave());
 
@@ -68,7 +70,6 @@ function leave(): void {
   if (session?.role === 'host' && session.lobby.players.length > 1 && !confirm('Leaving ends the game for everyone. Leave?')) return;
   session?.leave();
   session = null;
-  history.replaceState(null, '', location.pathname);
   setMenuStatus('');
   show('menu');
 }
@@ -117,15 +118,26 @@ codeInput.addEventListener('input', () => (codeInput.value = normalizeCode(codeI
 $('#practice-btn').addEventListener('click', () => attach(new LocalSession()));
 $('#leave-game').addEventListener('click', () => leave());
 
-// Opened an invite link (…/#CODE): pre-fill the code.
-const linkCode = normalizeCode(location.hash.slice(1));
-if (linkCode.length === 6) {
-  codeInput.value = linkCode;
-  setMenuStatus(`You've been invited to game ${linkCode}. Enter your name and press Join.`);
-  (nameInput.value ? joinBtn : nameInput).focus();
-} else {
-  nameInput.focus();
-}
+nameInput.focus();
+
+// ---------- Sound ----------
+const muteBtn = $<HTMLButtonElement>('#mute-btn');
+const syncMute = () => (muteBtn.textContent = sfx.muted ? 'Sound: off' : 'Sound: on');
+const toggleMute = () => {
+  sfx.setMuted(!sfx.muted);
+  syncMute();
+};
+syncMute();
+muteBtn.addEventListener('click', (e) => {
+  toggleMute();
+  (e.currentTarget as HTMLElement).blur(); // keep Space for firing, not re-clicking this button
+});
+// Browsers only allow audio after a click or key press.
+window.addEventListener('pointerdown', () => sfx.unlock());
+window.addEventListener('keydown', (e) => {
+  sfx.unlock();
+  if (e.code === 'KeyM' && session?.game && !(e.target instanceof HTMLInputElement)) toggleMute();
+});
 
 window.addEventListener('beforeunload', () => session?.leave());
 

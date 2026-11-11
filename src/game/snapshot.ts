@@ -1,5 +1,6 @@
 // Compact per-tick state the host sends to guests.
 
+import { BULLET_KINDS, POWER_KINDS } from './items';
 import { mazeForRound, type GameEvent, type GameState, type Phase } from './sim';
 
 export interface Snapshot {
@@ -10,10 +11,12 @@ export interface Snapshot {
   ph: Phase;
   pt: number; // phase timer
   w: number | null; // match winner
-  /** [id, x, y, angle, alive, score] */
-  tk: [number, number, number, number, 0 | 1, number][];
-  /** [id, x, y] */
-  b: [number, number, number][];
+  /** [id, x, y, angle, alive, score, power index (-1 none), power seconds left] */
+  tk: [number, number, number, number, 0 | 1, number, number, number][];
+  /** [id, x, y, kind index] */
+  b: [number, number, number, number][];
+  /** [id, kind index, x, y] */
+  pk: [number, number, number, number][];
   ev: GameEvent[];
 }
 
@@ -28,8 +31,12 @@ export function makeSnapshot(state: GameState, events: GameEvent[]): Snapshot {
     ph: state.phase,
     pt: r2(state.phaseTimer),
     w: state.matchWinner,
-    tk: state.tanks.map((t) => [t.id, r2(t.x), r2(t.y), Math.round(t.angle * 1000) / 1000, t.alive ? 1 : 0, t.score]),
-    b: state.bullets.map((b) => [b.id, r2(b.x), r2(b.y)]),
+    tk: state.tanks.map((t) => [
+      t.id, r2(t.x), r2(t.y), Math.round(t.angle * 1000) / 1000, t.alive ? 1 : 0, t.score,
+      t.power ? POWER_KINDS.indexOf(t.power) : -1, Math.round(t.powerTime * 10) / 10,
+    ]),
+    b: state.bullets.map((b) => [b.id, r2(b.x), r2(b.y), BULLET_KINDS.indexOf(b.kind)]),
+    pk: state.pickups.map((p) => [p.id, POWER_KINDS.indexOf(p.kind), p.x, p.y]),
     ev: events,
   };
 }
@@ -49,7 +56,7 @@ export function applySnapshot(state: GameState, s: Snapshot): void {
 
   const ids = new Set(s.tk.map((t) => t[0]));
   state.tanks = state.tanks.filter((t) => ids.has(t.id));
-  for (const [id, x, y, angle, alive, score] of s.tk) {
+  for (const [id, x, y, angle, alive, score, power, powerTime] of s.tk) {
     const t = state.tanks.find((t) => t.id === id);
     if (!t) continue;
     const teleport = newRound || !t.alive;
@@ -61,16 +68,21 @@ export function applySnapshot(state: GameState, s: Snapshot): void {
     t.angle = angle;
     t.alive = alive === 1;
     t.score = score;
+    t.power = power >= 0 ? POWER_KINDS[power] : null;
+    t.powerTime = powerTime;
   }
 
   const old = new Map(state.bullets.map((b) => [b.id, b]));
-  state.bullets = s.b.map(([id, x, y]) => {
+  state.bullets = s.b.map(([id, x, y, kind]) => {
     const prev = old.get(id);
     return {
-      id, owner: 0, kind: 'basic' as const, x, y, vx: 0, vy: 0,
+      id, owner: 0, kind: BULLET_KINDS[kind], x, y,
+      vx: prev ? x - prev.x : 0, vy: prev ? y - prev.y : 0,
       prevX: prev ? prev.x : x, prevY: prev ? prev.y : y, age: 0, armed: true,
     };
   });
+
+  state.pickups = s.pk.map(([id, kind, x, y]) => ({ id, kind: POWER_KINDS[kind], x, y }));
 
   state.events.push(...s.ev);
 }

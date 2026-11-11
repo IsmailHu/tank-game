@@ -43,14 +43,9 @@
               <div class="invite-row">
                 <span class="label">Code</span>
                 <span id="invite-code" class="code"></span>
-                <button class="btn small" data-copy="code">Copy</button>
+                <button class="btn small" id="copy-code">Copy</button>
               </div>
-              <div class="invite-row">
-                <span class="label">Link</span>
-                <input id="invite-link" readonly />
-                <button class="btn small" data-copy="link">Copy</button>
-              </div>
-              <p class="hint">Friends open the link, or choose “Join” and type the code.</p>
+              <p class="hint">Friends open the game, type this code and press “Join”.</p>
             </div>
           </div>
         </header>
@@ -65,7 +60,7 @@
           </label>
           <label class="toggle">
             <input type="checkbox" id="set-items" />
-            <span>Items <small>power-up pickups (coming soon)</small></span>
+            <span>Items <small>power-ups appear in the maze: shield, speed, rapid fire, minigun, homing missile, frag bomb, death ray</small></span>
           </label>
           <label class="select">
             <span>Points to win</span>
@@ -93,6 +88,7 @@
           <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive · <kbd>Space</kbd> fire
           <span id="local-help" hidden>· player 2: arrows + <kbd>Enter</kbd></span>
         </div>
+        <button id="mute-btn" class="btn small" title="Toggle sound (M)">Sound: on</button>
         <button id="leave-game" class="btn small">Leave</button>
       </footer>
     </section>

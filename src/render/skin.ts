@@ -1,6 +1,7 @@
 // All visuals live behind this interface so the art style can be swapped
 // later without touching game logic.
 
+import { POWERS, type BulletKind, type PowerKind } from '../game/items';
 import type { Rect } from '../game/maze';
 
 export interface TankLook {
@@ -12,17 +13,20 @@ export interface TankLook {
 
 export interface Skin {
   background: string; // around the arena
+  vignette: string; // colour the screen edges fade to
   floor: string;
   drawWalls(ctx: CanvasRenderingContext2D, walls: Rect[]): void;
   drawTank(ctx: CanvasRenderingContext2D, tank: TankLook): void;
-  drawBullet(ctx: CanvasRenderingContext2D, x: number, y: number): void;
+  drawBullet(ctx: CanvasRenderingContext2D, x: number, y: number, kind: BulletKind, angle: number, time: number): void;
+  drawPickup(ctx: CanvasRenderingContext2D, kind: PowerKind, x: number, y: number, time: number): void;
 }
 
 const INK = '#35353b';
 
 /** Simple flat placeholder style: plain shapes, nothing final. */
 export const placeholderSkin: Skin = {
-  background: '#e4e1da',
+  background: '#b9b3a7',
+  vignette: 'rgb(40 36 30 / 0.35)',
   floor: '#fbfaf7',
 
   drawWalls(ctx, walls) {
@@ -68,10 +72,114 @@ export const placeholderSkin: Skin = {
     ctx.restore();
   },
 
-  drawBullet(ctx, x, y) {
-    ctx.fillStyle = INK;
+  drawBullet(ctx, x, y, kind, angle, time) {
+    switch (kind) {
+      case 'homing': {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.fillStyle = '#f2a03d';
+        ctx.beginPath();
+        ctx.moveTo(-5, -2.5);
+        ctx.lineTo(-10 - Math.random() * 4, 0);
+        ctx.lineTo(-5, 2.5);
+        ctx.fill();
+        ctx.fillStyle = POWERS.homing.color;
+        ctx.beginPath();
+        ctx.roundRect(-6, -3, 12, 6, 3);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+      case 'frag': {
+        const pulse = 1 + Math.sin(time * 14) * 0.15;
+        ctx.fillStyle = POWERS.frag.color;
+        ctx.beginPath();
+        ctx.arc(x, y, 6 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        return;
+      }
+      case 'shard':
+        ctx.fillStyle = '#c47a2c';
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      case 'mini':
+      case 'rapid':
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      default:
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+  },
+
+  drawPickup(ctx, kind, x, y, time) {
+    const s = 1 + Math.sin(time * 4 + x) * 0.06;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ctx.fillStyle = 'rgb(0 0 0 / 0.15)';
     ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.roundRect(-9, -8, 20, 20, 5);
     ctx.fill();
+    ctx.fillStyle = POWERS[kind].color;
+    ctx.beginPath();
+    ctx.roundRect(-10, -10, 20, 20, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.fillStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    switch (kind) {
+      case 'speed': // double chevron
+        ctx.moveTo(-5, -5); ctx.lineTo(0, 0); ctx.lineTo(-5, 5);
+        ctx.moveTo(1, -5); ctx.lineTo(6, 0); ctx.lineTo(1, 5);
+        ctx.stroke();
+        break;
+      case 'shield':
+        ctx.moveTo(0, -6); ctx.lineTo(5, -4); ctx.lineTo(4, 2); ctx.lineTo(0, 6); ctx.lineTo(-4, 2); ctx.lineTo(-5, -4);
+        ctx.closePath();
+        ctx.stroke();
+        break;
+      case 'rapid': // three dots in a line
+        for (const dx of [-5, 0, 5]) { ctx.moveTo(dx + 1.6, 0); ctx.arc(dx, 0, 1.6, 0, Math.PI * 2); }
+        ctx.fill();
+        break;
+      case 'minigun': // three barrels
+        for (const dy of [-4, 0, 4]) { ctx.moveTo(-5, dy); ctx.lineTo(5, dy); }
+        ctx.stroke();
+        break;
+      case 'homing': // crosshair
+        ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+        ctx.moveTo(0, -7); ctx.lineTo(0, -3); ctx.moveTo(0, 3); ctx.lineTo(0, 7);
+        ctx.moveTo(-7, 0); ctx.lineTo(-3, 0); ctx.moveTo(3, 0); ctx.lineTo(7, 0);
+        ctx.stroke();
+        break;
+      case 'frag': // burst
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          ctx.moveTo(Math.cos(a) * 2.5, Math.sin(a) * 2.5);
+          ctx.lineTo(Math.cos(a) * 6.5, Math.sin(a) * 6.5);
+        }
+        ctx.stroke();
+        break;
+      case 'ray': // lightning bolt
+        ctx.moveTo(2, -7); ctx.lineTo(-3, 1); ctx.lineTo(1, 1); ctx.lineTo(-2, 7);
+        ctx.stroke();
+        break;
+    }
+    ctx.restore();
   },
 };

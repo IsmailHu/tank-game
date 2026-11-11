@@ -40,7 +40,3 @@ export function makeRoomCode(): string {
 export function normalizeCode(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 }
-
-export function inviteLink(code: string): string {
-  return `${location.origin}${location.pathname}#${code}`;
-}

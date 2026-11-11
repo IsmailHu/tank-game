@@ -1,3 +1,6 @@
+import type { Sfx } from '../audio/sfx';
+import { TANK_RADIUS } from '../game/constants';
+import { POWERS } from '../game/items';
 import type { GameState } from '../game/sim';
 import type { Skin } from './skin';
 
@@ -12,7 +15,23 @@ interface Particle {
   color: string;
 }
 
+interface Beam {
+  points: number[];
+  color: string;
+  life: number;
+}
+
+interface Ring {
+  x: number;
+  y: number;
+  radius: number;
+  life: number;
+  maxLife: number;
+  color: string;
+}
+
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const BEAM_LIFE = 0.45;
 
 /**
  * Draws the game scaled to fill the canvas (letterboxed, any window size),
@@ -21,9 +40,12 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private particles: Particle[] = [];
+  private beams: Beam[] = [];
+  private rings: Ring[] = [];
   private shake = 0;
+  private time = 0;
 
-  constructor(private canvas: HTMLCanvasElement, private skin: Skin) {
+  constructor(private canvas: HTMLCanvasElement, private skin: Skin, private sfx?: Sfx) {
     this.ctx = canvas.getContext('2d')!;
   }
 
@@ -43,6 +65,7 @@ export class Renderer {
   draw(state: GameState, alpha: number, realDt: number): void {
     const dpr = this.fit();
     const { ctx, skin, canvas } = this;
+    this.time += realDt;
     this.consumeEvents(state);
 
     const pad = 16 * dpr;
@@ -56,59 +79,157 @@ export class Renderer {
       this.shake = Math.max(0, this.shake - realDt * 40);
     }
 
+    // Darker surround with a soft vignette towards the screen edges.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = skin.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const vg = ctx.createRadialGradient(cx, cy, Math.min(cx, cy) * 0.6, cx, cy, Math.hypot(cx, cy));
+    vg.addColorStop(0, 'rgb(0 0 0 / 0)');
+    vg.addColorStop(1, skin.vignette);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.setTransform(scale, 0, 0, scale, ox, oy);
+    ctx.fillStyle = 'rgb(0 0 0 / 0.18)';
+    ctx.fillRect(2, 4, mw, mh);
     ctx.fillStyle = skin.floor;
     ctx.fillRect(0, 0, mw, mh);
 
+    for (const p of state.pickups) skin.drawPickup(ctx, p.kind, p.x, p.y, this.time);
+
     for (const t of state.tanks) {
       if (!t.alive) continue;
-      skin.drawTank(ctx, {
-        x: lerp(t.prevX, t.x, alpha),
-        y: lerp(t.prevY, t.y, alpha),
-        angle: lerp(t.prevAngle, t.angle, alpha),
-        color: t.color,
-      });
+      const x = lerp(t.prevX, t.x, alpha);
+      const y = lerp(t.prevY, t.y, alpha);
+      if (t.power === 'speed' && (t.x !== t.prevX || t.y !== t.prevY) && Math.random() < 0.6) {
+        this.particles.push({
+          x: x - Math.cos(t.angle) * 12, y: y - Math.sin(t.angle) * 12,
+          vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20,
+          life: 0.3, maxLife: 0.3, size: 2.5, color: POWERS.speed.color,
+        });
+      }
+      skin.drawTank(ctx, { x, y, angle: lerp(t.prevAngle, t.angle, alpha), color: t.color });
+      if (t.power) this.drawPowerRing(x, y, t.power === 'shield', POWERS[t.power].color, t.powerTime / POWERS[t.power].duration);
     }
 
     skin.drawWalls(ctx, state.maze.walls);
 
-    for (const b of state.bullets) skin.drawBullet(ctx, lerp(b.prevX, b.x, alpha), lerp(b.prevY, b.y, alpha));
+    for (const b of state.bullets) {
+      skin.drawBullet(ctx, lerp(b.prevX, b.x, alpha), lerp(b.prevY, b.y, alpha), b.kind, Math.atan2(b.vy, b.vx), this.time);
+    }
 
+    this.drawBeams(realDt);
+    this.drawRings(realDt);
     this.drawParticles(realDt);
+  }
+
+  /** Shield bubble and/or a ring showing how much of the power-up is left. */
+  private drawPowerRing(x: number, y: number, shield: boolean, color: string, left: number): void {
+    const { ctx } = this;
+    if (shield) {
+      ctx.fillStyle = 'rgb(61 155 224 / 0.15)';
+      ctx.strokeStyle = 'rgb(61 155 224 / 0.75)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, TANK_RADIUS + 6 + Math.sin(this.time * 8) * 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(x, y, TANK_RADIUS + 10, -Math.PI / 2, -Math.PI / 2 + Math.max(0, Math.min(1, left)) * Math.PI * 2);
+    ctx.stroke();
   }
 
   private consumeEvents(state: GameState): void {
     for (const e of state.events) {
-      if (e.type === 'explode') {
-        this.shake = 10;
-        for (let i = 0; i < 36; i++) {
-          const a = Math.random() * Math.PI * 2;
-          const s = 30 + Math.random() * 160;
-          const life = 0.4 + Math.random() * 0.6;
-          this.particles.push({
-            x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
-            life, maxLife: life, size: 2 + Math.random() * 4,
-            color: i % 3 === 0 ? '#35353b' : i % 3 === 1 ? '#f2a03d' : e.color,
-          });
-        }
-      } else if (e.type === 'fire') {
-        for (let i = 0; i < 5; i++) {
-          const a = e.angle + (Math.random() - 0.5) * 0.9;
-          const s = 40 + Math.random() * 60;
-          this.particles.push({
-            x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
-            life: 0.15, maxLife: 0.15, size: 1.5 + Math.random() * 1.5, color: '#f2a03d',
-          });
-        }
-      } else if (e.type === 'roundStart') {
-        this.particles = [];
+      this.sfx?.play(e);
+      switch (e.type) {
+        case 'explode':
+          this.shake = 10;
+          this.burst(e.x, e.y, 36, [e.color, '#35353b', '#f2a03d'], 30, 190, 0.4, 1.0, 2, 6);
+          break;
+        case 'frag':
+          this.shake = Math.max(this.shake, 7);
+          this.burst(e.x, e.y, 24, [POWERS.frag.color, '#f2a03d'], 40, 160, 0.2, 0.5, 2, 5);
+          this.rings.push({ x: e.x, y: e.y, radius: 40, life: 0.35, maxLife: 0.35, color: POWERS.frag.color });
+          break;
+        case 'fire':
+          if (e.kind === 'mini' || e.kind === 'rapid') this.burst(e.x, e.y, 2, ['#f2a03d'], 30, 60, 0.08, 0.1, 1, 2, e.angle);
+          else this.burst(e.x, e.y, 5, ['#f2a03d'], 40, 100, 0.15, 0.15, 1.5, 3, e.angle);
+          break;
+        case 'ray':
+          this.shake = Math.max(this.shake, 6);
+          this.beams.push({ points: e.points, color: e.color, life: BEAM_LIFE });
+          break;
+        case 'pickup':
+          this.rings.push({ x: e.x, y: e.y, radius: 26, life: 0.3, maxLife: 0.3, color: POWERS[e.kind].color });
+          break;
+        case 'shield':
+          this.rings.push({ x: e.x, y: e.y, radius: TANK_RADIUS + 14, life: 0.25, maxLife: 0.25, color: POWERS.shield.color });
+          break;
+        case 'roundStart':
+          this.particles = [];
+          this.beams = [];
+          this.rings = [];
+          break;
       }
     }
     state.events.length = 0;
+  }
+
+  private burst(
+    x: number, y: number, count: number, colors: string[], minSpeed: number, maxSpeed: number,
+    minLife: number, maxLife: number, minSize: number, maxSize: number, angle?: number,
+  ): void {
+    for (let i = 0; i < count; i++) {
+      const a = angle === undefined ? Math.random() * Math.PI * 2 : angle + (Math.random() - 0.5) * 0.9;
+      const s = minSpeed + Math.random() * (maxSpeed - minSpeed);
+      const life = minLife + Math.random() * (maxLife - minLife);
+      this.particles.push({
+        x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, maxLife: life,
+        size: minSize + Math.random() * (maxSize - minSize), color: colors[i % colors.length],
+      });
+    }
+  }
+
+  private drawBeams(dt: number): void {
+    const { ctx } = this;
+    this.beams = this.beams.filter((b) => (b.life -= dt) > 0);
+    for (const beam of this.beams) {
+      const k = beam.life / BEAM_LIFE;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const [width, color, alpha] of [[10, beam.color, 0.25], [4, beam.color, 0.9], [1.5, '#fff', 1]] as const) {
+        ctx.globalAlpha = alpha * k;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width * (0.6 + 0.4 * k);
+        ctx.beginPath();
+        ctx.moveTo(beam.points[0], beam.points[1]);
+        for (let i = 2; i < beam.points.length; i += 2) ctx.lineTo(beam.points[i], beam.points[i + 1]);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawRings(dt: number): void {
+    const { ctx } = this;
+    this.rings = this.rings.filter((r) => (r.life -= dt) > 0);
+    for (const r of this.rings) {
+      const k = r.life / r.maxLife;
+      ctx.globalAlpha = k;
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = 3 * k;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.radius * (1.2 - k * 0.6), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   private drawParticles(dt: number): void {

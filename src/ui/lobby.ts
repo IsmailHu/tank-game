@@ -1,5 +1,4 @@
 import { MAX_PLAYERS, POINTS_TO_WIN_OPTIONS } from '../game/settings';
-import { inviteLink } from '../net/protocol';
 import type { Session } from '../net/session';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -28,17 +27,14 @@ export class LobbyView {
     document.addEventListener('click', () => this.setInviteOpen(false));
     document.addEventListener('keydown', (e) => e.key === 'Escape' && this.setInviteOpen(false));
 
-    this.invite.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) =>
-      btn.addEventListener('click', () => {
-        if (!this.session) return;
-        const text = btn.dataset.copy === 'code' ? this.session.code : inviteLink(this.session.code);
-        copy(text).then((ok) => {
-          btn.textContent = ok ? 'Copied!' : 'Select & copy';
-          setTimeout(() => (btn.textContent = 'Copy'), 1500);
-        });
-      }),
-    );
-    $<HTMLInputElement>('#invite-link').addEventListener('focus', (e) => (e.target as HTMLInputElement).select());
+    const copyBtn = $<HTMLButtonElement>('#copy-code');
+    copyBtn.addEventListener('click', () => {
+      if (!this.session) return;
+      copy(this.session.code).then((ok) => {
+        copyBtn.textContent = ok ? 'Copied!' : 'Copy failed';
+        setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
+      });
+    });
 
     this.selfDamage.addEventListener('change', () => this.session?.updateSettings?.({ selfDamage: this.selfDamage.checked }));
     this.items.addEventListener('change', () => this.session?.updateSettings?.({ items: this.items.checked }));
@@ -57,7 +53,6 @@ export class LobbyView {
   open(session: Session): void {
     this.session = session;
     $('#invite-code').textContent = session.code;
-    $<HTMLInputElement>('#invite-link').value = inviteLink(session.code);
     this.setInviteOpen(session.role === 'host');
     this.render();
   }
